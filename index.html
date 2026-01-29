@@ -34,7 +34,18 @@
         /* 进度条动画 */
         .indicator-bar { position: absolute; bottom: 0; left: 0; height: 6px; transition: width 0.1s; border-radius: 0 0 2rem 2rem; filter: drop-shadow(0 0 8px currentColor); }
 
-        #dify-chatbot-bubble-button { background-color: var(--accent-blue) !important; z-index: 1000 !important; border: 2px solid rgba(255,255,255,0.1) !important; }
+        /* 优化Dify样式：提高层级、确保可点击 */
+        #dify-chatbot-bubble-button { 
+            background-color: var(--accent-blue) !important; 
+            z-index: 99999 !important; /* 最高层级，避免被遮挡 */
+            border: 2px solid rgba(255,255,255,0.1) !important;
+            pointer-events: auto !important; /* 强制允许点击事件 */
+        }
+        #dify-chatbot-bubble-window {
+            z-index: 99999 !important; /* 弹窗同步最高层级 */
+            width: 24rem !important;
+            height: 40rem !important;
+        }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen">
@@ -266,12 +277,15 @@
             document.getElementById('analysis-layer').classList.remove('hidden');
         }
 
+        // 优化openDify函数：直接调用Dify内置方法，更可靠
         function openDify() {
-            if(window.difyChatbotConfig) {
-                const bubbleBtn = document.getElementById('dify-chatbot-bubble-button');
-                if (bubbleBtn) bubbleBtn.click();
+            if (window.difyChatbot) {
+                // 直接调用Dify的显示/隐藏切换方法，无需查找按钮
+                window.difyChatbot.toggle();
+            } else if (window.difyChatbotConfig) {
+                alert("Dify 导师正在加载中，请稍候片刻再试～");
             } else {
-                alert("正在调取 Dify 导师...");
+                alert("Dify 配置未生效，请检查网络或配置信息～");
             }
         }
 
@@ -288,9 +302,25 @@
         }
     </script>
 
+    <!-- 优化Dify配置：1. 改为HTTPS 2. 移除defer 3. 添加手动初始化 4. 提高加载优先级 -->
     <script>
-     window.difyChatbotConfig = { token: 'dLcIrIy1AkVHupEu', baseUrl: 'http://exper-api.cfnet.org.cn' }
+     window.difyChatbotConfig = { 
+         token: 'dLcIrIy1AkVHupEu', 
+         baseUrl: 'https://exper-api.cfnet.org.cn' // 关键：HTTP改为HTTPS，适配GitHub Pages
+     }
     </script>
-    <script src="https://exper-api.cfnet.org.cn/embed.min.js" id="dLcIrIy1AkVHupEu" defer></script>
+    <script 
+        src="https://exper-api.cfnet.org.cn/embed.min.js" 
+        id="dLcIrIy1AkVHupEu"
+        onload="initDifyChatbot()"> <!-- 脚本加载完成后手动初始化，确保生效 -->
+    </script>
+    <!-- Dify手动初始化函数 -->
+    <script>
+        function initDifyChatbot() {
+            if (window.difyChatbot && !window.difyChatbot.initialized) {
+                window.difyChatbot.init(window.difyChatbotConfig);
+            }
+        }
+    </script>
 </body>
 </html>
