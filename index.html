@@ -1,326 +1,247 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <title>库存控制原理测试实训</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <style>
-        :root { --accent-blue: #3b82f6; --accent-green: #10b981; --accent-red: #ef4444; }
-        body { background: #020617; color: #f8fafc; overflow: hidden; font-family: 'PingFang SC', sans-serif; }
-        
-        /* 科技感背景网格 */
-        #tech-bg {
-            position: fixed; inset: 0;
-            background-image: linear-gradient(to right, rgba(59, 130, 246, 0.05) 1px, transparent 1px),
-                              linear-gradient(to bottom, rgba(59, 130, 246, 0.05) 1px, transparent 1px);
-            background-size: 40px 40px;
-            mask-image: radial-gradient(circle at center, black, transparent 80%);
-            z-index: 0;
-        }
+  <meta charset="UTF-8">
+  <title>库存控制原理测试实训</title>
 
-        #video-preview { position: fixed; bottom: 20px; right: 20px; width: 160px; border-radius: 16px; border: 2px solid rgba(59, 130, 246, 0.3); transform: scaleX(-1); z-index: 100; box-shadow: 0 0 20px rgba(59, 130, 246, 0.2); }
-        
-        .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
-        
-        /* 决策能量场 */
-        #bg-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 1; transition: 0.5s cubic-bezier(0.4, 0, 0.2, 1); opacity: 0.3; }
-        
-        #particle-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-        .btn-glow:hover { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); transform: translateY(-2px); }
-        
-        /* 进度条动画 */
-        .indicator-bar { position: absolute; bottom: 0; left: 0; height: 6px; transition: width 0.1s; border-radius: 0 0 2rem 2rem; filter: drop-shadow(0 0 8px currentColor); }
+  <!-- MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
-        /* 优化Dify样式：提高层级、确保可点击 */
-        #dify-chatbot-bubble-button { 
-            background-color: var(--accent-blue) !important; 
-            z-index: 99999 !important; /* 最高层级，避免被遮挡 */
-            border: 2px solid rgba(255,255,255,0.1) !important;
-            pointer-events: auto !important; /* 强制允许点击事件 */
-        }
-        #dify-chatbot-bubble-window {
-            z-index: 99999 !important; /* 弹窗同步最高层级 */
-            width: 24rem !important;
-            height: 40rem !important;
-        }
-    </style>
+  <style>
+    :root {
+      --accent-blue: #3b82f6;
+      --accent-green: #10b981;
+      --accent-red: #ef4444;
+    }
+
+    body {
+      background: #020617;
+      color: #f8fafc;
+      overflow: hidden;
+      font-family: 'PingFang SC', sans-serif;
+    }
+
+    #tech-bg {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(59,130,246,.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(59,130,246,.05) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(circle at center, black, transparent 80%);
+      z-index: 0;
+    }
+
+    #video-preview {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 160px;
+      border-radius: 16px;
+      border: 2px solid rgba(59,130,246,.3);
+      transform: scaleX(-1);
+      z-index: 100;
+    }
+
+    .glass {
+      background: rgba(15,23,42,.6);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,.08);
+    }
+
+    #bg-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      opacity: .35;
+    }
+
+    #particle-canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    .indicator-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 6px;
+      border-radius: 0 0 2rem 2rem;
+    }
+
+    /* 强制 Dify 层级 */
+    #dify-chatbot-bubble-button,
+    #dify-chatbot-bubble-window {
+      z-index: 99999 !important;
+    }
+  </style>
 </head>
+
 <body class="flex items-center justify-center min-h-screen">
 
-    <div id="tech-bg"></div>
-    <div id="bg-overlay"></div>
-    <canvas id="particle-canvas"></canvas>
-    <video id="video-preview" autoplay playsinline></video>
+<div id="tech-bg"></div>
+<div id="bg-overlay"></div>
+<canvas id="particle-canvas"></canvas>
+<video id="video-preview" autoplay playsinline></video>
 
-    <div id="start-screen" class="relative z-50 text-center glass p-10 rounded-[2.5rem] max-w-xl">
-        <div class="inline-block p-4 rounded-3xl bg-blue-500/10 mb-6 border border-blue-500/20 shadow-inner">
-            <span class="text-5xl">📊</span>
-        </div>
-        <h1 class="text-4xl font-black mb-4 tracking-tight bg-clip-text text-transparent bg-gradient-to-br from-white to-blue-400">库存控制原理测试实训</h1>
-        <p class="text-slate-400 mb-10 text-sm leading-relaxed">Intelligence Inventory Control System v2.0</p>
-        
-        <div class="grid grid-cols-2 gap-4 mb-10 text-left">
-            <div class="p-4 rounded-2xl bg-white/5 border border-white/5">
-                <div class="text-red-400 font-bold mb-1">← 向左挥手</div>
-                <div class="text-xs text-slate-500">判定命题为“错误”</div>
-            </div>
-            <div class="p-4 rounded-2xl bg-white/5 border border-white/5">
-                <div class="text-green-400 font-bold mb-1">向右挥手 →</div>
-                <div class="text-xs text-slate-500">判定命题为“正确”</div>
-            </div>
-        </div>
+<!-- 开始界面 -->
+<div id="start-screen" class="relative z-50 glass p-10 rounded-[2.5rem] text-center max-w-xl">
+  <h1 class="text-4xl font-black mb-6">库存控制原理测试实训</h1>
+  <button onclick="initGame()" class="w-full bg-blue-600 py-5 rounded-2xl font-bold">
+    进入实训空间
+  </button>
+</div>
 
-        <button onclick="initGame()" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-black text-lg transition-all btn-glow">
-            进入实训空间
-        </button>
+<!-- 加载 -->
+<div id="loading" class="hidden z-50 text-center">
+  <p class="text-blue-400">系统初始化中...</p>
+</div>
+
+<!-- 游戏 UI -->
+<div id="game-ui" class="hidden z-20 w-full max-w-2xl px-6 text-center">
+  <div id="card" class="glass p-12 rounded-[2.5rem] relative">
+    <p id="q-text" class="text-2xl font-bold min-h-[160px] flex items-center justify-center"></p>
+    <div id="decision-bar" class="indicator-bar w-0"></div>
+  </div>
+</div>
+
+<!-- 结果 -->
+<div id="result-hub" class="hidden z-30 text-center max-w-4xl">
+  <h2 class="text-4xl font-black mb-10">测评完成</h2>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div onclick="showAnalysis()" class="glass p-10 rounded-[3rem] cursor-pointer">
+      <h3 class="text-xl font-bold">学情诊断报告</h3>
     </div>
 
-    <div id="loading" class="hidden text-center z-50">
-        <div class="relative w-16 h-16 mx-auto mb-6">
-            <div class="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
-            <div class="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin"></div>
-        </div>
-        <p class="text-blue-400 font-mono text-xs tracking-[0.3em]">SYNCHRONIZING SYSTEM...</p>
+    <div onclick="openDify()" class="glass p-10 rounded-[3rem] cursor-pointer border border-blue-500/30">
+      <h3 class="text-xl font-bold text-blue-400">AI 实训导师</h3>
+      <p class="text-xs text-slate-400 mt-2">点击右下角 AI 图标</p>
     </div>
+  </div>
+</div>
 
-    <div id="game-ui" class="hidden relative z-20 flex flex-col items-center w-full max-w-2xl px-6">
-        <div id="progress-tag" class="px-4 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 font-mono text-[10px] mb-8 tracking-widest uppercase">Task Sequence // 01</div>
-        <div id="card" class="glass p-12 rounded-[2.5rem] text-center w-full relative group">
-            <div class="absolute -top-4 -left-4 w-8 h-8 border-t-2 border-l-2 border-blue-500/50"></div>
-            <div class="absolute -bottom-4 -right-4 w-8 h-8 border-b-2 border-r-2 border-blue-500/50"></div>
-            <p id="q-text" class="text-2xl font-bold min-h-[160px] flex items-center justify-center leading-relaxed px-6 text-white/90 italic"></p>
-            <div class="indicator-bar w-0" id="decision-bar"></div>
-        </div>
-        <div class="mt-12 flex gap-4">
-             <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-             <div class="text-slate-500 text-[10px] font-bold tracking-[0.4em] uppercase">Visual Interaction Active</div>
-        </div>
-    </div>
+<!-- 分析层 -->
+<div id="analysis-layer" class="hidden fixed inset-0 z-[60] glass flex items-center justify-center">
+  <div class="bg-slate-900 p-10 rounded-[3rem] max-w-xl w-full">
+    <button onclick="closeAnalysis()" class="absolute top-6 right-6 text-3xl">&times;</button>
+    <div id="diagnosis-content"></div>
+  </div>
+</div>
 
-    <div id="result-hub" class="hidden relative z-30 w-full max-w-4xl px-6 text-center">
-        <h2 class="text-5xl font-black mb-12 tracking-tighter">测评分析就绪</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div onclick="showAnalysis()" class="glass p-10 rounded-[3rem] cursor-pointer group hover:bg-white/5 transition-all">
-                <div class="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center text-3xl mb-6 mx-auto group-hover:scale-110 transition">📉</div>
-                <h3 class="text-2xl font-bold mb-4">学情诊断报告</h3>
-                <p class="text-slate-500 text-sm leading-relaxed">多维度解析库存控制逻辑误区<br>精准定位知识点薄弱项</p>
-            </div>
-            <div onclick="openDify()" class="glass p-10 rounded-[3rem] cursor-pointer group hover:bg-blue-600/10 border-blue-500/20 transition-all border">
-                <div class="w-16 h-16 bg-blue-600/20 rounded-2xl flex items-center justify-center text-3xl mb-6 mx-auto group-hover:scale-110 transition">👩‍🏫</div>
-                <h3 class="text-2xl font-bold mb-4 text-blue-400">AI 实训导师</h3>
-                <p class="text-slate-500 text-sm leading-relaxed">对接 Dify 知识库进行 1V1 深度复盘<br>即时解答复杂模型计算疑问</p>
-            </div>
-        </div>
-    </div>
+<script>
+/* ===== 题库 ===== */
+const questions = [
+  { text: "安全库存是应对需求不确定性的手段？", ans: true, tag: "安全库存定义" },
+  { text: "服务水平越高，库存成本一定越高？", ans: false, tag: "成本权衡" }
+];
 
-    <div id="analysis-layer" class="hidden fixed inset-0 z-[60] glass flex items-center justify-center p-6">
-        <div class="max-w-xl w-full bg-slate-900/90 p-10 rounded-[3rem] shadow-2xl relative border border-white/10">
-            <button onclick="document.getElementById('analysis-layer').classList.add('hidden')" class="absolute top-8 right-8 text-slate-500 hover:text-white text-4xl font-light">&times;</button>
-            <h3 class="text-2xl font-black mb-8 text-blue-400 uppercase tracking-widest">Diagnostic Report</h3>
-            <div id="diagnosis-content" class="space-y-4 mb-10"></div>
-            <button onclick="openDify()" class="w-full py-5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl font-bold btn-glow">联系导师进行专项提升</button>
-        </div>
-    </div>
+let idx = 0;
+let wrongs = [];
+let canSwipe = true;
+let currentX = 0;
+let targetX = 0;
+let holdCounter = 0;
 
-    <script>
-        const questions = [
-            { text: "安全库存越大，提前期波动性越大，安全库存水平就越低？", ans: false, tag: "波动与库存相关性" },
-            { text: "安全库存是应对实际需求超出预期需求的不确定性的重要手段？", ans: true, tag: "库存控制基本定义" },
-            { text: "如果要提高客户服务水平，库存总成本必然会随之增加？", ans: false, tag: "服务水平与成本权衡" },
-            { text: "订单满足率指的是一个补货周期内不发生缺货的概率？", ans: false, tag: "绩效指标概念辨析" },
-            { text: "库存控制目标包括提高客户服务水平和降低库存总成本？", ans: true, tag: "库存管理核心目标" }
-        ];
+/* ===== 摄像头 ===== */
+function initGame() {
+  startCamera();
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('loading').classList.remove('hidden');
+}
 
-        let idx = 0, wrongs = [], canSwipe = true, currentX = 0, targetX = 0, holdCounter = 0;
-        let particles = [];
-        const canvas = document.getElementById('particle-canvas');
-        const ctx = canvas.getContext('2d');
+const hands = new Hands({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+hands.setOptions({ maxNumHands: 1 });
 
-        // 初始化画布
-        window.onresize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
-        window.onresize();
+hands.onResults(res => {
+  if (!canSwipe || !res.multiHandLandmarks) return;
+  const lm = res.multiHandLandmarks[0][9];
+  targetX = (lm.x - .5) * -800;
+  currentX += (targetX - currentX) * .15;
 
-        // 粒子系统
-        class Particle {
-            constructor(x, y, color) {
-                this.x = x; this.y = y;
-                this.size = Math.random() * 4 + 2;
-                this.speedX = (Math.random() - 0.5) * 5;
-                this.speedY = (Math.random() - 0.5) * 5;
-                this.color = color;
-                this.life = 1;
-            }
-            update() {
-                this.x += this.speedX; this.y += this.speedY;
-                this.life -= 0.02;
-            }
-            draw() {
-                ctx.fillStyle = this.color;
-                ctx.globalAlpha = this.life;
-                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
-            }
-        }
+  const card = document.getElementById('card');
+  card.style.transform = `translateX(${currentX}px) rotate(${currentX/25}deg)`;
 
-        function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            particles = particles.filter(p => p.life > 0);
-            particles.forEach(p => { p.update(); p.draw(); });
-            requestAnimationFrame(animate);
-        }
-        animate();
+  if (Math.abs(currentX) > 160) {
+    holdCounter++;
+    if (holdCounter > 20) confirmChoice(currentX > 0);
+  } else {
+    holdCounter = 0;
+  }
+});
 
-        // 音效引擎
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        function playTone(freq, type, duration) {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.start(); osc.stop(audioCtx.currentTime + duration);
-        }
+function confirmChoice(choice) {
+  canSwipe = false;
+  if (choice !== questions[idx].ans) wrongs.push(questions[idx].tag);
+  idx++;
 
-        function initGame() {
-            document.getElementById('start-screen').classList.add('hidden');
-            document.getElementById('loading').classList.remove('hidden');
-            startCamera();
-        }
+  setTimeout(() => {
+    if (idx < questions.length) {
+      resetCard();
+    } else {
+      document.getElementById('game-ui').classList.add('hidden');
+      document.getElementById('result-hub').classList.remove('hidden');
+    }
+  }, 500);
+}
 
-        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1 });
-        
-        hands.onResults(results => {
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const lm = results.multiHandLandmarks[0][9]; // 中指根部
-                const x = (1 - lm.x) * canvas.width;
-                const y = lm.y * canvas.height;
-                
-                // 粒子跟随
-                if (canSwipe) {
-                    for(let i=0; i<3; i++) particles.push(new Particle(x, y, '#3b82f6'));
-                }
+function resetCard() {
+  currentX = targetX = holdCounter = 0;
+  canSwipe = true;
+  document.getElementById('q-text').innerText = questions[idx].text;
+}
 
-                if (canSwipe && idx < questions.length) targetX = (lm.x - 0.5) * -1000;
-            } else { targetX = 0; }
+function startCamera() {
+  const cam = new Camera(document.getElementById('video-preview'), {
+    onFrame: async () => {
+      await hands.send({ image: document.getElementById('video-preview') });
+    }
+  });
+  cam.start().then(() => {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('game-ui').classList.remove('hidden');
+    document.getElementById('q-text').innerText = questions[0].text;
+  });
+}
 
-            currentX += (targetX - currentX) * 0.15;
-            const bg = document.getElementById('bg-overlay');
-            const card = document.getElementById('card');
-            const bar = document.getElementById('decision-bar');
+/* ===== 诊断 ===== */
+function showAnalysis() {
+  document.getElementById('analysis-layer').classList.remove('hidden');
+}
 
-            if (canSwipe && idx < questions.length) {
-                card.style.transform = `translateX(${currentX}px) rotate(${currentX/25}deg)`;
-                
-                if (currentX > 80) {
-                    bg.style.background = `radial-gradient(circle at right, rgba(16, 185, 129, 0.4), transparent 70%)`;
-                } else if (currentX < -80) {
-                    bg.style.background = `radial-gradient(circle at left, rgba(239, 68, 68, 0.4), transparent 70%)`;
-                } else {
-                    bg.style.background = "transparent";
-                }
+function closeAnalysis() {
+  document.getElementById('analysis-layer').classList.add('hidden');
+}
 
-                if (Math.abs(currentX) > 160) {
-                    if (holdCounter === 0) playTone(400, 'sine', 0.1);
-                    holdCounter++;
-                    bar.style.width = (holdCounter / 22 * 100) + "%";
-                    bar.style.background = currentX > 0 ? "#10b981" : "#ef4444";
-                    bar.style.color = currentX > 0 ? "#10b981" : "#ef4444";
-                    if (holdCounter >= 22) confirmChoice(currentX > 0);
-                } else {
-                    holdCounter = 0; bar.style.width = "0%";
-                }
-            }
-        });
+/* ===== 打开 Dify（安全方案） ===== */
+function openDify() {
+  const btn = document.getElementById('dify-chatbot-bubble-button');
+  if (btn) btn.click();
+  else alert("AI 导师正在加载，请稍候");
+}
+</script>
 
-        function confirmChoice(choice) {
-            canSwipe = false;
-            const isCorrect = choice === questions[idx].ans;
-            if (!isCorrect) wrongs.push(questions[idx].tag);
-            isCorrect ? playTone(800, 'triangle', 0.3) : playTone(200, 'sawtooth', 0.3);
-            
-            document.getElementById('card').style.transform = `translateX(${choice ? 1500 : -1500}px) scale(0.2) rotate(45deg)`;
-            document.getElementById('card').style.opacity = "0";
-            document.getElementById('bg-overlay').style.background = "transparent";
-            
-            setTimeout(() => {
-                idx++;
-                if (idx < questions.length) resetCard(); else showHub();
-            }, 600);
-        }
+<!-- ===== Dify Embed（官方推荐写法）===== -->
+<script>
+  window.difyChatbotConfig = {
+    token: '【你的 Dify Token】',
+    baseUrl: 'https://exper-api.cfnet.org.cn'
+  };
+</script>
 
-        function resetCard() {
-            document.getElementById('q-text').innerText = questions[idx].text;
-            document.getElementById('progress-tag').innerText = `Task Sequence // 0${idx + 1}`;
-            targetX = currentX = holdCounter = 0;
-            const card = document.getElementById('card');
-            card.style.transition = "none"; card.style.transform = "translateX(0) scale(1)"; card.style.opacity = "1";
-            setTimeout(() => { canSwipe = true; card.style.transition = "transform 0.1s ease-out, opacity 0.4s"; }, 100);
-        }
+<script
+  src="https://exper-api.cfnet.org.cn/embed.min.js"
+  id="【你的 Dify Token】">
+</script>
 
-        function showHub() {
-            document.getElementById('game-ui').classList.add('hidden');
-            document.getElementById('result-hub').classList.remove('hidden');
-        }
-
-        function showAnalysis() {
-            const list = document.getElementById('diagnosis-content');
-            const unique = [...new Set(wrongs)];
-            if (unique.length === 0) {
-                list.innerHTML = "<div class='p-8 rounded-3xl bg-green-500/10 border border-green-500/30 text-green-400 text-center font-bold'>测评结果：完美。您已完全掌握本节实训的库存控制核心逻辑。</div>";
-            } else {
-                list.innerHTML = unique.map(tag => `<div class='bg-white/5 p-6 rounded-[2rem] border-l-4 border-blue-500'><h4 class='text-white font-bold mb-1'>${tag}</h4><p class='text-xs text-slate-500 uppercase tracking-tighter'>Review Required / 请复核逻辑模型</p></div>`).join("");
-            }
-            document.getElementById('analysis-layer').classList.remove('hidden');
-        }
-
-        // 优化openDify函数：直接调用Dify内置方法，更可靠
-        function openDify() {
-            if (window.difyChatbot) {
-                // 直接调用Dify的显示/隐藏切换方法，无需查找按钮
-                window.difyChatbot.toggle();
-            } else if (window.difyChatbotConfig) {
-                alert("Dify 导师正在加载中，请稍候片刻再试～");
-            } else {
-                alert("Dify 配置未生效，请检查网络或配置信息～");
-            }
-        }
-
-        function startCamera() {
-            const cam = new Camera(document.getElementById('video-preview'), {
-                onFrame: async () => { await hands.send({image: document.getElementById('video-preview')}); },
-                width: 640, height: 480
-            });
-            cam.start().then(() => {
-                document.getElementById('loading').classList.add('hidden');
-                document.getElementById('game-ui').classList.remove('hidden');
-                document.getElementById('q-text').innerText = questions[0].text;
-            });
-        }
-    </script>
-
-    <!-- 优化Dify配置：1. 改为HTTPS 2. 移除defer 3. 添加手动初始化 4. 提高加载优先级 -->
-    <script>
-     window.difyChatbotConfig = { 
-         token: 'dLcIrIy1AkVHupEu', 
-         baseUrl: 'https://exper-api.cfnet.org.cn' // 关键：HTTP改为HTTPS，适配GitHub Pages
-     }
-    </script>
-    <script 
-        src="https://exper-api.cfnet.org.cn/embed.min.js" 
-        id="dLcIrIy1AkVHupEu"
-        onload="initDifyChatbot()"> <!-- 脚本加载完成后手动初始化，确保生效 -->
-    </script>
-    <!-- Dify手动初始化函数 -->
-    <script>
-        function initDifyChatbot() {
-            if (window.difyChatbot && !window.difyChatbot.initialized) {
-                window.difyChatbot.init(window.difyChatbotConfig);
-            }
-        }
-    </script>
 </body>
 </html>
